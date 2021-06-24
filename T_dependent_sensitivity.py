@@ -135,11 +135,7 @@ def flame_speed(mixture, P, Tin, gas, workingdir, name=None, mingrid=200,
     None.
 
     """
-    # Initial conditions and convergence parameters
-    initial_grid = [0, 0.02, 0.04, 0.06, 0.08, 0.5]
-    # initial_grid in meters. One point at 40% of the domain is included
-    # regardless because that is the default flame location.
-    f = cantera.FreeFlame(gas, initial_grid)  # Create flame object
+    f = cantera.FreeFlame(gas)  # Create flame object
     refine_criteria = {'slope': 0.85, 'curve': 0.99, 'prune': 0.01,
                        'ratio': 2}
 #        f.show_solution() #debug
