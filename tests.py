@@ -58,12 +58,14 @@ def test_sensitivity():
     ax = fig.add_subplot(111, xlabel='T [K]', ylabel='Sensitivity')
 
     fmt = 'Width={:.0f} K, magnitude = {:.2f}'.format
-    # for width, mag in ((100, 0.01), (100, 0.05), (10, 0.05), (100, 0.5), (500, 0.05)):
     start = time.time()
-    for width, mag in ((100, 0.05),):
+    for width, mag in ((2500, 0.1), (500, 0.1), (100, 0.1), (10, 0.1), (100, 1), (100, 0.01)):
+        # From extensive testing, the best conditions seem to be:
+        # Width = 50 to 200
+        # Magnitude = 0.01 - 1
         print(width, mag)
         sensitivity = sens.sensitivity(mixture, 298, 1, chemfile, rxn_num,
-                                       mingrid=200, loglevel=2, resolution=25,
+                                       mingrid=200, loglevel=0, resolution=100,
                                        width=width, mag=mag)
         ax.plot(sensitivity[:, 0], sensitivity[:, 1], ls='-', marker='', label=fmt(width, mag))
     plt.legend()

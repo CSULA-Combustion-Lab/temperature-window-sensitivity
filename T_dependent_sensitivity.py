@@ -91,6 +91,7 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
 
     su_base, Tad = flame_speed(mixture, P, T, gas, workingdir, **flame_run_opts)
 
+    #TODO: Run this loop in parallel
     temperatures = np.linspace(T + 100, Tad, resolution)
     sens = []
     for temperature in temperatures:
@@ -140,11 +141,16 @@ def flame_speed(mixture, P, Tin, gas, workingdir, name=None, mingrid=200,
                        'ratio': 2}
 #        f.show_solution() #debug
 
+    if loglevel <= 0:
+        lower_log = 0
+    else:
+        lower_log = loglevel - 1
+
     if restart is not None:
         if type(restart) is str:
             log('Restoring from ' + restart, loglevel)
             f.restore(os.path.join(workingdir, restart+'.xml'),
-                      loglevel=loglevel-1)
+                      loglevel=lower_log)
             refine_criteria = f.get_refine_criteria()
         else:
             data, refine_criteria = restart
@@ -162,7 +168,7 @@ def flame_speed(mixture, P, Tin, gas, workingdir, name=None, mingrid=200,
         if mult_soret:
             f.transport_model = 'Multi'  # 'Mix' is default
             f.soret_enabled = True  # False is default
-        f.solve(loglevel=loglevel-1, refine_grid=True, auto=True)
+        f.solve(loglevel=lower_log, refine_grid=True, auto=True)
         # Refine the grid and check for grid independence.
         f.energy_enabled = True
         _grid_independence(f, mingrid, loglevel)
@@ -175,7 +181,7 @@ def flame_speed(mixture, P, Tin, gas, workingdir, name=None, mingrid=200,
             except OSError:
                 pass
             # Save solution to restart using f.restore()
-            f.save(os.path.join(workingdir, name+'.xml'), loglevel=loglevel-1)
+            f.save(os.path.join(workingdir, name+'.xml'), loglevel=lower_log)
 
     except Exception as e:  # Except all errors
         log(e, loglevel)
