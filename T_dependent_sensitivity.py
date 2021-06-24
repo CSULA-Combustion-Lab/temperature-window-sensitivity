@@ -89,24 +89,14 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     gas = cantera.Solution(chemfile)
     gas = add_perturbed_rxn(gas, rxn_num)
 
-    # Coarse simulation to use for restarts
-    f_rstrt, ref = flame_speed(mixture, P, T, gas, workingdir, mingrid=20,
-                          loglevel=loglevel-1, mult_soret=mult_soret)
-    restart_arr = f_rstrt.to_solution_array()
-
-    f_base, _ = flame_speed(mixture, P, T, gas, workingdir, restart=(restart_arr, ref),
-                          **flame_run_opts)
-    su_base = f_base.velocity[0]
-    Tad = f_base.T[-1]
+    su_base, Tad = flame_speed(mixture, P, T, gas, workingdir, **flame_run_opts)
 
     temperatures = np.linspace(T + 100, Tad, resolution)
     sens = []
     for temperature in temperatures:
         log('\nPerturbation centered at {:.0f} K'.format(temperature), loglevel)
         gas = perturb_reaction(gas, temperature, width, mag, rxn_num)
-        f, _ = flame_speed(mixture, P, T, gas, workingdir, restart=(restart_arr,ref),
-                            **flame_run_opts)
-        su = f.velocity[0]
+        su, _ = flame_speed(mixture, P, T, gas, workingdir, **flame_run_opts)
         sens.append(((su - su_base) / su_base) / (mag * width))
 
     return np.array([temperatures, sens]).T
@@ -195,8 +185,7 @@ def flame_speed(mixture, P, Tin, gas, workingdir, name=None, mingrid=200,
         log(e, loglevel)
         raise
 
-    # return f.velocity[0], f.T[-1]
-    return f, f.get_refine_criteria()
+    return f.velocity[0], f.T[-1]
 
 
 def log(msg, level):
