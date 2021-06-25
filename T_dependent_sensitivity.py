@@ -17,6 +17,38 @@ PMIN = 0
 PMAX = 1e50
 WORKINGDIR = r"C:\Users\jsantne\Documents\GitHub\temperature-window-sensitivity\Outputs"
 
+
+def duplicate_reactions(gas, rxn_num):
+    """Find and report duplicate reactions in a model.
+
+    Parameters
+    ----------
+    gas : object
+        Cantera generated gas object created using user provided mechanism
+    rxn_num : int
+        Check this reaction to see if it is a duplicate.
+
+    Returns
+    -------
+    dup_rxns : list
+        List of reaction numbers for matching duplicate reactions. If rxn_num
+        is not a duplicate, then this will just be [rxn_num]
+    """
+
+
+    duplicate_inds = [rxn_num]
+    if gas.reaction(rxn_num).duplicate:
+        equation = gas.reaction_equation(rxn_num)
+        eqns = gas.reaction_equations()
+        for i in range(len(eqns)):
+            if i != rxn_num:
+                if eqns[i] == equation:
+                    duplicate_inds.append(i)
+        assert len(duplicate_inds) > 1
+
+    return duplicate_inds
+
+
 def add_perturbed_rxn(gas, rxn_num):
     """
     Add a Chebyshev reaction duplicate that will be used to perturb the sims.
@@ -34,9 +66,6 @@ def add_perturbed_rxn(gas, rxn_num):
         Solution object with the extra reaction
     """
     rxn = gas.reaction(rxn_num)
-    if rxn.duplicate:
-        print('WARNING: {} is a duplicate reaction. This code currently does '
-              'not handle duplicate reactions correctly.'.format(rxn.equation))
     if type(rxn) is not cantera._cantera.ElementaryReaction:
         print('WARNING: {} is a {}. This code has only been tested on '
               'cantera._cantera.ElementaryReaction. '.format(rxn.equation, type(rxn)))
@@ -46,7 +75,6 @@ def add_perturbed_rxn(gas, rxn_num):
     elif type(rxn) is cantera._cantera.FalloffReaction:
         raise TypeError('{} is a FalloffReaction. '
                         'This is not supported.'.format(rxn.equation))
-
     rxn.duplicate = True
     new_rxn = cantera.ChebyshevReaction(rxn.reactants, rxn.products)
     new_rxn.set_parameters(100, 3000, PMIN, PMAX, [[-10], [0], [0]])
@@ -63,6 +91,9 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
     the given width and magnitude, where the maximum rate of the perturbed
     reaction is (1 + mag_factor) x k_orig(T)
 
+    The perturbation is centered at the harmonic mean of the low and high
+    temperatures (2/(1/TL + 1/TH)).
+
     Parameters
     ----------
     gas : cantera.Solution
@@ -73,8 +104,9 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
         Width of the perturbation in Kelvin
     mag_factor : float
         Magnitude of the perturbation
-    rxn_num : int
-        0-indexed reaction number
+    rxn_num : list
+        List of 0-indexed reaction numbers. Include more than one reaction
+        number if they are duplicates.
 
     Returns
     -------
@@ -82,9 +114,17 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
         Solution object where the perturbation has been applied.
 
     """
-    Tmin = T - width  # Note: width is not divided by 2. See test plots.
-    Tmax = T + width
-    magnitude = gas.reaction(rxn_num).rate(T) * mag_factor # TODO: if the reaction is a duplicate, this magnitude should include dupliates.
+    # These equations ensure that the center of the perturbation is
+    # actually at T, and that Tmax - Tmin = 2*width
+    Tmax = (T + 2 * width + np.sqrt((T + 2 * width)**2 - 4 * width * T))/2
+    Tmin = Tmax - 2 * width
+
+    # Tmax = (T + width + np.sqrt((T + width)**2 - 2 * width * T))/2
+    # Tmin = Tmax - width
+
+    magnitude = 0
+    for num in rxn_num:
+        magnitude += gas.reaction(num).rate(T) * mag_factor
     # TODO: How to deal with efficiencies? Is that impossible? Does it matter?
     coeffs = [[0], [0], [-1 * np.log10(magnitude)]]
     i_chebyshev = len(gas.reactions()) - 1
@@ -100,6 +140,7 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     flame_run_opts = {'workingdir': workingdir, 'mingrid': mingrid,
                       'loglevel': loglevel-1, 'mult_soret': mult_soret}
     gas = cantera.Solution(chemfile)
+    rxns = duplicate_reactions(gas, rxn_num)
     gas = add_perturbed_rxn(gas, rxn_num)
 
     su_base, Tad = flame_speed(mixture, P, T, gas, **flame_run_opts)
@@ -109,7 +150,7 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     sens = []
     for temperature in temperatures:
         log('\nPerturbation centered at {:.0f} K'.format(temperature), loglevel)
-        gas = perturb_reaction(gas, temperature, width, mag, rxn_num)
+        gas = perturb_reaction(gas, temperature, width, mag, rxns)
         su, _ = flame_speed(mixture, P, T, gas, **flame_run_opts)
         sens.append(((su - su_base) / su_base) / (mag * width))
 

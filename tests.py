@@ -5,6 +5,7 @@ Created on Wed Jun 23 11:58:28 2021
 @author: jsantne
 """
 import cantera
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import T_dependent_sensitivity as sens
@@ -12,7 +13,8 @@ import time
 
 def test_plot_rates():
     gas = cantera.Solution('h2_burke2012.cti')
-    i = 3
+    i = 20
+    nums = sens.duplicate_reactions(gas, i)
     gas = sens.add_perturbed_rxn(gas, i)
     i_pert = len(gas.reactions()) - 1
 
@@ -24,21 +26,26 @@ def test_plot_rates():
                          title=gas.reaction(i).equation)
     T_plot = np.linspace(800, 2200, 500)
 
+
     # Plot unperturbed rate
     unp_rate = []
     true_rate = []
     for Temp in T_plot:
         gas.TP = (Temp, 101325)
-        unp_rate.append(gas.forward_rate_constants[i] + gas.forward_rate_constants[i_pert])
-        true_rate.append(gas.forward_rate_constants[i])
+        rates = gas.forward_rate_constants
+        rate = sum([rates[j] for j in nums])
+        unp_rate.append(rate + rates[i_pert])
+        true_rate.append(rate)
     ax.plot([1000/x for x in T_plot], unp_rate, ls='-', marker='x', label='Unperturbed')
 
     for T in (1000, 1500, 2000):
         rate = []
-        gas = sens.perturb_reaction(gas, T, width, mag, i)
+        gas = sens.perturb_reaction(gas, T, width, mag, nums)
         for Temp in T_plot:
             gas.TP = (Temp, 101325)
-            rate.append(gas.forward_rate_constants[i] + gas.forward_rate_constants[i_pert])
+            rates = gas.forward_rate_constants
+            temp_rate = sum([rates[j] for j in nums])
+            rate.append(temp_rate + rates[i_pert])
         ax.plot([1000/x for x in T_plot], rate, ls='-', marker='', label=str(T))
     fig.legend()
     fig.show()
@@ -70,5 +77,51 @@ def test_sensitivity():
         ax.plot(sensitivity[:, 0], sensitivity[:, 1], ls='-', marker='', label=fmt(width, mag))
     plt.legend()
     print('This took {:.0f} seconds'.format(time.time() - start))
+
+def compare_perturbation_shapes():
+    """ Compare the perturbation to a gaussian, and make sure the shape doesn't
+    change with temperature shifts.
+
+    The shape widens slightly at lower T."""
+    gas = cantera.Solution('h2_burke2012.cti')
+    i = 0
+    nums = sens.duplicate_reactions(gas, i)
+    gas = sens.add_perturbed_rxn(gas, i)
+    i_pert = len(gas.reactions()) - 1
+
+    width = 10
+    mag = 1
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, xlabel=r'$T - T_c$', xlim=[-1*width, 2*width],
+                         title='Width = {}\nmagnitude = {}'.format(width, mag))
+    T_plot = np.linspace(400, 2100, 5000)
+
+    for T in (500, 1000, 1500, 2000):
+        rate = []
+        gas = sens.perturb_reaction(gas, T, width, mag, nums)
+        for Temp in T_plot:
+            gas.TP = (Temp, 101325)
+            rates = gas.forward_rate_constants
+            rate.append(rates[i_pert])
+        gas.TP = (T, 101325)
+        norm = gas.forward_rate_constants[i]
+        ax.plot([x - T for x in T_plot], [k/norm for k in rate], ls='-',
+                marker='', label='k_pert / k($T_c) at T_c$ = {}'.format(T))
+
+    # Compare to gaussian
+    sigma = width/10
+    x = np.linspace(-2 * width, width, 200)
+    y = mag * np.exp(-1 * x**2 / (2 * sigma**2))
+    ax.plot(x, y, ls='--', marker='', c='k', label=r'Gaussian, $T_\sigma$ = width/10, $T_P/(T_\sigma \sqrt{2\pi}$) = magnitude')
+
+    fig.legend(loc='right')
+    fig.tight_layout()
+    fig.show()
+    plt.savefig(os.path.join('Outputs', 'Check shape.png'))
+
+
+
 # test_plot_rates()
-test_sensitivity()
+# test_sensitivity()
+compare_perturbation_shapes()
