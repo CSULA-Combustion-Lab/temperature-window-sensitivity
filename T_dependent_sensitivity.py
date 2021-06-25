@@ -34,6 +34,19 @@ def add_perturbed_rxn(gas, rxn_num):
         Solution object with the extra reaction
     """
     rxn = gas.reaction(rxn_num)
+    if rxn.duplicate:
+        print('WARNING: {} is a duplicate reaction. This code currently does '
+              'not handle duplicate reactions correctly.'.format(rxn.equation))
+    if type(rxn) is not cantera._cantera.ElementaryReaction:
+        print('WARNING: {} is a {}. This code has only been tested on '
+              'cantera._cantera.ElementaryReaction. '.format(rxn.equation, type(rxn)))
+    if type(rxn) is cantera._cantera.ThreeBodyReaction:
+        print('WARNING: {} has third-body efficiencies. This code may give '
+              'behave strangely with third-body reactions'.format(rxn.equation))
+    elif type(rxn) is cantera._cantera.FalloffReaction:
+        raise TypeError('{} is a FalloffReaction. '
+                        'This is not supported.'.format(rxn.equation))
+
     rxn.duplicate = True
     new_rxn = cantera.ChebyshevReaction(rxn.reactants, rxn.products)
     new_rxn.set_parameters(100, 3000, PMIN, PMAX, [[-10], [0], [0]])
@@ -82,14 +95,14 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
 
 
 def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
-                mult_soret=False, resolution=100, width=10, mag=0.01,
+                mult_soret=False, resolution=100, width=75, mag=0.05,
                 workingdir=WORKINGDIR):
-    flame_run_opts = {'mingrid': mingrid, 'loglevel': loglevel-1,
-                      'mult_soret': mult_soret}
+    flame_run_opts = {'workingdir': workingdir, 'mingrid': mingrid,
+                      'loglevel': loglevel-1, 'mult_soret': mult_soret}
     gas = cantera.Solution(chemfile)
     gas = add_perturbed_rxn(gas, rxn_num)
 
-    su_base, Tad = flame_speed(mixture, P, T, gas, workingdir, **flame_run_opts)
+    su_base, Tad = flame_speed(mixture, P, T, gas, **flame_run_opts)
 
     #TODO: Run this loop in parallel
     temperatures = np.linspace(T + 100, Tad, resolution)
@@ -97,7 +110,7 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     for temperature in temperatures:
         log('\nPerturbation centered at {:.0f} K'.format(temperature), loglevel)
         gas = perturb_reaction(gas, temperature, width, mag, rxn_num)
-        su, _ = flame_speed(mixture, P, T, gas, workingdir, **flame_run_opts)
+        su, _ = flame_speed(mixture, P, T, gas, **flame_run_opts)
         sens.append(((su - su_base) / su_base) / (mag * width))
 
     return np.array([temperatures, sens]).T
