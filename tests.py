@@ -70,12 +70,12 @@ def test_sensitivity():
         # From extensive testing, the best conditions seem to be:
         # Width = 50 to 200
         # Magnitude = 0.01 - 1
-        print(width, mag)
         sensitivity = sens.sensitivity(mixture, 298, 1, chemfile, rxn_num,
-                                       mingrid=200, loglevel=0, resolution=100,
-                                       width=width, mag=mag)
+                                       mingrid=200, loglevel=1, resolution=50,
+                                       width=width, mag=mag, parallel=True)
         ax.plot(sensitivity[:, 0], sensitivity[:, 1], ls='-', marker='', label=fmt(width, mag))
     plt.legend()
+    plt.savefig(os.path.join('Outputs', 'test fig.png'))
     print('This took {:.0f} seconds'.format(time.time() - start))
 
 def compare_perturbation_shapes():
@@ -121,7 +121,7 @@ def compare_perturbation_shapes():
     plt.savefig(os.path.join('Outputs', 'Check shape.png'))
 
 
-
-# test_plot_rates()
-# test_sensitivity()
-compare_perturbation_shapes()
+if __name__ == '__main__':
+    # test_plot_rates()
+    test_sensitivity()
+    # compare_perturbation_shapes()

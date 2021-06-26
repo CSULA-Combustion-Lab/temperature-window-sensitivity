@@ -10,6 +10,7 @@ Python/cantera version of ideas presented in:
 import cantera
 import numpy as np
 import os
+import multiprocessing
 
 
 # Global Variables
@@ -136,28 +137,59 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
 
 def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
                 mult_soret=False, resolution=100, width=75, mag=0.05,
-                workingdir=WORKINGDIR):
-    flame_run_opts = {'workingdir': workingdir, 'mingrid': mingrid,
+                workingdir=WORKINGDIR, parallel=True):
+    log('*******\nParallel: {}\n'
+        'Width = {}, magnitude = {}\n'
+        '{:.0f} K, {:.1f} atm\n'
+        'Modifying reaction {}\n'
+        'T-resolution: {}\n'
+        '{} minimum grid points'.format(parallel, width, mag, T, P, rxn_num,
+                                        resolution, mingrid), loglevel)
+
+    flame_run_opts = {'mixture': mixture, 'Tin': T, 'P': P,
+                      'workingdir': workingdir, 'mingrid': mingrid,
                       'loglevel': loglevel-1, 'mult_soret': mult_soret}
+
+    # Calculate base case using model with blank Chebyshev rate, just in case.
     gas = cantera.Solution(chemfile)
     rxns = duplicate_reactions(gas, rxn_num)
     gas = add_perturbed_rxn(gas, rxn_num)
+    su_base, Tad = flame_speed(gas, **flame_run_opts)
 
-    su_base, Tad = flame_speed(mixture, P, T, gas, **flame_run_opts)
-
-    #TODO: Run this loop in parallel
     temperatures = np.linspace(T + 100, Tad, resolution)
-    sens = []
-    for temperature in temperatures:
-        log('\nPerturbation centered at {:.0f} K'.format(temperature), loglevel)
-        gas = perturb_reaction(gas, temperature, width, mag, rxns)
-        su, _ = flame_speed(mixture, P, T, gas, **flame_run_opts)
-        sens.append(((su - su_base) / su_base) / (mag * width))
+
+    if not parallel:
+        speeds = []
+        for temperature in temperatures:
+            log('\nPerturbation centered at {:.0f} K'.format(temperature), loglevel)
+            gas = perturb_reaction(gas, temperature, width, mag, rxns)
+            su, _ = flame_speed(gas, **flame_run_opts)
+            speeds.append(su)
+    elif parallel:
+        n_proc = multiprocessing.cpu_count() - 1
+        pool = multiprocessing.Pool(n_proc)
+        arglist = [(T_c, chemfile, rxn_num, width, mag, loglevel - 1, flame_run_opts)
+                   for T_c in temperatures]
+        speeds = pool.starmap(one_sensitivity, arglist)
+
+    sens = [((x - su_base) / su_base) / (mag * width) for x in speeds]
 
     return np.array([temperatures, sens]).T
 
+def one_sensitivity(T_center, chemfile, rxn_num, width, mag, loglevel,
+                    flame_run_opts):
+    """Calculate perturbed flame speed at one temperature, called from
+    sensitivity() in parallel"""
+    log('\nPerturbation centered at {:.0f} K'.format(T_center), loglevel)
+    gas = cantera.Solution(chemfile)
+    rxns = duplicate_reactions(gas, rxn_num)
+    gas = add_perturbed_rxn(gas, rxn_num)
+    gas = perturb_reaction(gas, T_center, width, mag, rxns)
+    su, _ = flame_speed(gas, **flame_run_opts)
+    return su
 
-def flame_speed(mixture, P, Tin, gas, workingdir, name=None, mingrid=200,
+
+def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
                 loglevel=0, restart=None, mult_soret=False):
     """
 
