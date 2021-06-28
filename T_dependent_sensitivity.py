@@ -156,7 +156,7 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     gas = add_perturbed_rxn(gas, rxn_num)
     su_base, Tad = flame_speed(gas, **flame_run_opts)
 
-    temperatures = np.linspace(T + 100, Tad, resolution)
+    temperatures = np.linspace(T+20, Tad, resolution)
 
     if not parallel:
         speeds = []
@@ -172,9 +172,38 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
                    for T_c in temperatures]
         speeds = pool.starmap(one_sensitivity, arglist)
 
-    sens = [((x - su_base) / su_base) / (mag * width) for x in speeds]
+    sens = [((x - su_base) / su_base) / (mag * width) for x in speeds if x is not None]
+    T = [t for t, x in zip(temperatures, speeds) if x is not None]
+    sens_array = np.array([T, sens]).T
+    return sens_array, window_stats(sens_array)
 
-    return np.array([temperatures, sens]).T
+
+def window_stats(sens):
+    """
+    Find the 5 temperatures for the temperature window.
+
+    Parameters
+    ----------
+    sens : array
+        Numpy array of temperature, sensitivity
+
+    Returns
+    -------
+    stats : tuple
+        Five values indicating (T_unburned, T_10%_low, T_max, T_10%_high, T_ad)
+        where the sensitivity is greater than 10% of its maximum between
+        T_10%_low and T_10%_high.
+
+    """
+    Tu = sens[0, 0] - 20
+    T_ad = sens[-1, 0]
+    Smax = sens.max(0)[1]
+    T_max = sens[sens.argmax(0)[1], 0]
+    inds = np.where(sens[:, 1] > 0.1 * Smax)
+    TL = sens[inds[0], 0]
+    TH = sens[inds[-1], 0]
+
+    return (Tu, TL, T_max, TH, T_ad)
 
 def one_sensitivity(T_center, chemfile, rxn_num, width, mag, loglevel,
                     flame_run_opts):
@@ -254,7 +283,7 @@ def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
         if mult_soret:
             f.transport_model = 'Multi'  # 'Mix' is default
             f.soret_enabled = True  # False is default
-        f.solve(loglevel=lower_log, refine_grid=True, auto=True)
+        f.solve(loglevel=lower_log, refine_grid=True, auto=True) #Sometimes this can cause the code to exit without finishing. This causes it to run forever if in parallel.
         # Refine the grid and check for grid independence.
         f.energy_enabled = True
         _grid_independence(f, mingrid, loglevel)
@@ -271,7 +300,7 @@ def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
 
     except Exception as e:  # Except all errors
         log(e, loglevel)
-        raise
+        return None, None
 
     return f.velocity[0], f.T[-1]
 
