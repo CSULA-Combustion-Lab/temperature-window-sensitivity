@@ -11,6 +11,9 @@ import cantera
 import numpy as np
 import os
 import multiprocessing
+from multiprocessing.dummy import Pool as ThreadPool
+from functools import partial
+from tqdm import tqdm
 
 
 # Global Variables
@@ -137,7 +140,7 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
 
 def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
                 mult_soret=False, resolution=100, width=75, mag=0.05,
-                workingdir=WORKINGDIR, parallel=True):
+                workingdir=WORKINGDIR, parallel=True, timeout=10):
     log('*******\nParallel: {}\n'
         'Width = {}, magnitude = {}\n'
         '{:.0f} K, {:.1f} atm\n'
@@ -156,7 +159,9 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     gas = add_perturbed_rxn(gas, rxn_num)
     su_base, Tad = flame_speed(gas, **flame_run_opts)
 
-    temperatures = np.linspace(T+20, Tad, resolution)
+    temperatures = np.linspace(T + 100, Tad, resolution)
+    # If the perturbation starts closer to T instead of T+100, there is a
+    # very strange error that causes the kernel to restart!
 
     if not parallel:
         speeds = []
@@ -167,10 +172,26 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
             speeds.append(su)
     elif parallel:
         n_proc = multiprocessing.cpu_count() - 1
-        pool = multiprocessing.Pool(n_proc)
+        pool = multiprocessing.Pool(n_proc, maxtasksperchild=1)
         arglist = [(T_c, chemfile, rxn_num, width, mag, loglevel - 1, flame_run_opts)
                    for T_c in temperatures]
-        speeds = pool.starmap(one_sensitivity, arglist)
+        result = []
+        for arg in arglist:
+            abortable_func = partial(abortable_worker, one_sensitivity,
+                                     timeout=timeout)
+            result.append(pool.apply_async(abortable_func, args=arg))
+        pool.close()
+        # pool.join()  # This waits until all all processes have finished. It's commented so that the progress bar works.
+
+        if loglevel < 2: # no other messages being printed
+            speeds = []
+            for p in tqdm(result):
+                speeds.append(p.get())
+        else:
+            pool.join()
+            speeds = [p.get() for p in result]
+
+        # speeds = pool.starmap(one_sensitivity, arglist)
 
     sens = [((x - su_base) / su_base) / (mag * width) for x in speeds if x is not None]
     T = [t for t, x in zip(temperatures, speeds) if x is not None]
@@ -195,7 +216,7 @@ def window_stats(sens):
         T_10%_low and T_10%_high.
 
     """
-    Tu = sens[0, 0] - 20
+    Tu = sens[0, 0] - 100
     T_ad = sens[-1, 0]
     Smax = sens.max(0)[1]
     T_max = sens[sens.argmax(0)[1], 0]
@@ -280,11 +301,12 @@ def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
         f.inlet.X = mixture
         f.P = P * cantera.one_atm
 
+        f.solve(loglevel=lower_log, refine_grid=True, auto=True)
+
+        # Refine the grid and check for grid independence.
         if mult_soret:
             f.transport_model = 'Multi'  # 'Mix' is default
             f.soret_enabled = True  # False is default
-        f.solve(loglevel=lower_log, refine_grid=True, auto=True) #Sometimes this can cause the code to exit without finishing. This causes it to run forever if in parallel.
-        # Refine the grid and check for grid independence.
         f.energy_enabled = True
         _grid_independence(f, mingrid, loglevel)
         log('Finished calculation - S_u =  {:.2f} cm/s'.format(f.velocity[0] * 100),
@@ -372,3 +394,16 @@ def _refine(fl, mingrid):
 
         fl.set_refine_criteria(**refine_criteria)
         return fl
+
+def abortable_worker(func, *args, **kwargs):
+    """ Allow parallel processing to timeout.
+    Copied from https://stackoverflow.com/questions/29494001/how-can-i-abort-a-task-in-a-multiprocessing-pool-after-a-timeout"""
+    timeout = kwargs.get('timeout', None)
+    p = ThreadPool(1)
+    res = p.apply_async(func, args=args)
+    try:
+        out = res.get(timeout)  # Wait timeout seconds for func to complete.
+        return out
+    except multiprocessing.TimeoutError:
+        print("Aborting due to timeout")
+        return None

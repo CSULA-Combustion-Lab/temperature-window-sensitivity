@@ -62,31 +62,56 @@ def test_sensitivity():
     chemfile = 'h2_li_19.cti'
     rxn_num = 0
     fig = plt.figure()
-    ax = fig.add_subplot(111, xlabel='T [K]', ylabel='Sensitivity [$K^-1$]',
+    ax = fig.add_subplot(111, xlabel='T [K]', ylabel='Sensitivity [$K^{-1}$]',
                          title='Analogous to Zhao et al. Figure 3')
 
-    fmt = 'Width={:.0f} K, magnitude = {:.2f}'.format
+    fmt = 'Width={:.0f} K, magnitude = {:.3f}'.format
     start = time.time()
-    for width, mag in ((2500, 0.05), (500, 0.05), (100, 0.05), (10, 0.05), (100, 0.5), (100, 0.005)):
+    for width, mag in ((2500, 0.05), (500, 0.05), (100, 0.05), (50, 0.05), (100, 1), (100, 0.005)):
         # From extensive testing, the best conditions seem to be:
         # Width = 50 to 200
         # Magnitude = 0.01 - 1
         sensitivity, _ = sens.sensitivity(
             mixture, 298, 1, chemfile, rxn_num, mingrid=200, loglevel=1,
-            resolution=20, width=width, mag=mag, parallel=True)
+            resolution=100, width=width, mag=mag, parallel=True, timeout=10)
         ax.plot(sensitivity[:, 0], sensitivity[:, 1], ls='-', marker='', label=fmt(width, mag))
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join('Demonstration Figures', 'Zhao Fig 3.png'))
+    plt.close(fig)
     print('This took {:.0f} seconds'.format(time.time() - start))
 
-def Zhao_fig_four():
-    """ Recreate Figure 4 in Zhao, Li, Kazakov, Dryer paper. """
+
+def Zhao_fig_five():
+    """ Recreate Figure 5 in Zhao, Li, Kazakov, Dryer paper.
+
+    for plotting example, see https://matplotlib.org/stable/gallery/lines_bars_and_markers/hat_graph.html#sphx-glr-gallery-lines-bars-and-markers-hat-graph-py"""
     chemfile = 'h2_li_19.cti'
     rxn_num = 0
-    fig = plt.figure()
-    ax = fig.add_subplot(111, ylabel='Temperature [K]',
-                         title='Analogous to Zhao et al. Figure 4')
+    fig, axes = plt.subplots(nrows=1, ncols=3, sharey=True,
+                             ylabel='Temperature[K]', xlabel=r'$\phi$',
+                             title='Analogous to Zhao et al. Figure 4')
+    spacing = 0.3
+    width = (1 - spacing) / 5
+
+    for P, ax in zip((1, 10, 40), axes):
+        ax.set_xticks([0.5, 1, 2, 3, 4])
+
+
+
+
+        for phi in (0.5, 1, 2, 3, 4):
+            mixture = {'H2': phi, 'O2': 0.5, 'N2': 0.5 * 3.76}
+            _, window = sens.sensitivity(
+                mixture, 298, P, chemfile, rxn_num, mingrid=200, loglevel=1,
+                resolution=30, parallel=True)
+            Tu, TL, Tm, TH, Tad = window
+            ax.bar(phi, TH - TL, width, bottom=TL)
+            # Add a vertical line from Tu to Tad
+            # Add a mark at Tm
+    fig.tight_layout()
+    plt.savefig(os.path.join('Demonstration Figures', 'Zhao Fig 5.png'))
+    plt.close(fig)
 
 
 def compare_perturbation_shapes():
