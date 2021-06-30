@@ -88,27 +88,23 @@ def Zhao_fig_five():
     for plotting example, see https://matplotlib.org/stable/gallery/lines_bars_and_markers/hat_graph.html#sphx-glr-gallery-lines-bars-and-markers-hat-graph-py"""
     chemfile = 'h2_li_19.cti'
     rxn_num = 0
-    fig, axes = plt.subplots(nrows=1, ncols=3, sharey=True,
-                             ylabel='Temperature[K]', xlabel=r'$\phi$',
-                             title='Analogous to Zhao et al. Figure 4')
-    spacing = 0.3
-    width = (1 - spacing) / 5
+    fig, axes = plt.subplots(nrows=1, ncols=3, sharey=True)
+    axes[0].set_ylabel('Temperature[K]')
+    # spacing = 0.3
+    # width = (1 - spacing) / 5
 
     for P, ax in zip((1, 10, 40), axes):
         ax.set_xticks([0.5, 1, 2, 3, 4])
-
-
-
-
+        ax.set_xlabel(r'$\phi$')
         for phi in (0.5, 1, 2, 3, 4):
             mixture = {'H2': phi, 'O2': 0.5, 'N2': 0.5 * 3.76}
             _, window = sens.sensitivity(
                 mixture, 298, P, chemfile, rxn_num, mingrid=200, loglevel=1,
-                resolution=30, parallel=True)
+                resolution=40, parallel=True, timeout=60)
             Tu, TL, Tm, TH, Tad = window
-            ax.bar(phi, TH - TL, width, bottom=TL)
-            # Add a vertical line from Tu to Tad
-            # Add a mark at Tm
+            ax.plot([phi, phi], [Tu, Tad], ls='--', marker='')
+            ax.bar(phi, TH - TL, width=0.2, bottom=TL)
+            ax.plot([phi-0.1, phi+0.1], [Tm, Tm], ls='-', marker='x', color='k')
     fig.tight_layout()
     plt.savefig(os.path.join('Demonstration Figures', 'Zhao Fig 5.png'))
     plt.close(fig)
@@ -162,5 +158,6 @@ def compare_perturbation_shapes():
 
 if __name__ == '__main__':
     # test_plot_rates()
-    test_sensitivity()
+    # test_sensitivity()
     # compare_perturbation_shapes()
+    Zhao_fig_five()

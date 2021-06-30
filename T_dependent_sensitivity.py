@@ -220,9 +220,9 @@ def window_stats(sens):
     T_ad = sens[-1, 0]
     Smax = sens.max(0)[1]
     T_max = sens[sens.argmax(0)[1], 0]
-    inds = np.where(sens[:, 1] > 0.1 * Smax)
-    TL = sens[inds[0], 0]
-    TH = sens[inds[-1], 0]
+    inds = np.where(np.abs(sens[:, 1]) > 0.1 * np.abs(Smax))
+    TL = sens[inds[0][0], 0]
+    TH = sens[inds[0][-1], 0]
 
     return (Tu, TL, T_max, TH, T_ad)
 
