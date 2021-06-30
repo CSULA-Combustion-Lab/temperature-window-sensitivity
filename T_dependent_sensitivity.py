@@ -163,6 +163,14 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
     # If the perturbation starts closer to T instead of T+100, there is a
     # very strange error that causes the kernel to restart!
 
+    if parallel:
+        try:
+            __IPYTHON__  # This code is running in an ipython console - serialize!
+            parallel = False
+            print('Simulations performed in series. Run outside IPython for parallel operation.')
+        except NameError:
+            pass
+
     if not parallel:
         speeds = []
         for temperature in temperatures:

@@ -90,6 +90,8 @@ def Zhao_fig_five():
     rxn_num = 0
     fig, axes = plt.subplots(nrows=1, ncols=3, sharey=True)
     axes[0].set_ylabel('Temperature[K]')
+    axes[0].set_ylim([300, 2700])
+    axes[0].set_yticks(np.arange(300, 3000, 300))
     # spacing = 0.3
     # width = (1 - spacing) / 5
 
@@ -99,12 +101,13 @@ def Zhao_fig_five():
         for phi in (0.5, 1, 2, 3, 4):
             mixture = {'H2': phi, 'O2': 0.5, 'N2': 0.5 * 3.76}
             _, window = sens.sensitivity(
-                mixture, 298, P, chemfile, rxn_num, mingrid=200, loglevel=1,
-                resolution=40, parallel=True, timeout=60)
+                mixture, 300, P, chemfile, rxn_num, mingrid=200, loglevel=1,
+                resolution=60, parallel=True, timeout=60)
             Tu, TL, Tm, TH, Tad = window
             ax.plot([phi, phi], [Tu, Tad], ls='--', marker='')
             ax.bar(phi, TH - TL, width=0.2, bottom=TL)
             ax.plot([phi-0.1, phi+0.1], [Tm, Tm], ls='-', marker='x', color='k')
+            ax.set_title('P = {} atm'.format(P))
     fig.tight_layout()
     plt.savefig(os.path.join('Demonstration Figures', 'Zhao Fig 5.png'))
     plt.close(fig)
