@@ -82,6 +82,47 @@ def test_sensitivity():
     print('This took {:.0f} seconds'.format(time.time() - start))
 
 
+def Zhao_fig_four():
+    mixture = {'H2': 1, 'O2': 0.5, 'N2': 0.5 * 3.76}
+    chemfile = 'h2_li_19.cti'
+    rxn_num = 0
+    fig, axes = plt.subplots(nrows=1, ncols=2, sharey=True)
+    axes[0].set_ylabel('Max Sensitivity [K$^{-1}$]')
+
+    T_res = 30
+    x_res = 10
+
+    mag = 0.05
+    width = np.logspace(0.3, 4, x_res)
+    peaks = []
+    for w in width:
+        sensitivity, _ = sens.sensitivity(
+            mixture, 298, 1, chemfile, rxn_num, mingrid=500, loglevel=1,
+            resolution=T_res, width=w, mag=mag, parallel=True, timeout=10)
+        peaks.append(sensitivity.max(0)[1])
+    axes[0].set_xscale('log')
+    axes[0].plot(width, peaks, ls='-', marker='.')
+    axes[0].set_xlabel('Perturbation Width [K]')
+    axes[0].set_title('Perturbation Magnitude = {}'.format(mag))
+
+    width = 100
+    mag = np.logspace(-3, 0.5, x_res)
+    peaks = []
+    for m in mag:
+        sensitivity, _ = sens.sensitivity(
+            mixture, 298, 1, chemfile, rxn_num, mingrid=250, loglevel=1,
+            resolution=T_res, width=width, mag=m, parallel=True, timeout=10)
+        peaks.append(sensitivity.max(0)[1])
+    axes[1].set_xscale('log')
+    axes[1].plot(mag, peaks, ls='-', marker='.')
+    axes[1].set_xlabel('Perturbation Magnitude')
+    axes[1].set_title('Perturbation Width = {}'.format(width))
+
+    plt.tight_layout()
+    plt.savefig(os.path.join('Demonstration Figures', 'Zhao Fig 4.png'))
+    plt.close(fig)
+
+
 def Zhao_fig_five():
     """ Recreate Figure 5 in Zhao, Li, Kazakov, Dryer paper.
 
@@ -163,4 +204,5 @@ if __name__ == '__main__':
     # test_plot_rates()
     # test_sensitivity()
     # compare_perturbation_shapes()
-    Zhao_fig_five()
+    # Zhao_fig_five()
+    Zhao_fig_four()
