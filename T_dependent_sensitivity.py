@@ -19,7 +19,7 @@ import cantera
 # Global Variables
 PMIN = 0
 PMAX = 1e50
-WORKINGDIR = r"C:\Users\jsantne\Documents\GitHub\temperature-window-sensitivity\Outputs"
+WORKINGDIR = os.path.dirname(os.path.realpath(__file__))
 
 
 def duplicate_reactions(gas, rxn_num):
