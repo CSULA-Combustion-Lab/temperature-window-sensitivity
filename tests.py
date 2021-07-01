@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jun 23 11:58:28 2021
+This file contains tests and "sanity checks" and demonstrations
 
-@author: jsantne
+Each function is designed to be called individually
 """
-import cantera
 import os
+import time
+import cantera
 import numpy as np
 import matplotlib.pyplot as plt
 import T_dependent_sensitivity as sens
-import time
 
 def test_plot_rates():
+    """Plot perturbed and unperturbed reaction rates to demonstrate the behavior
+    of this code"""
     gas = cantera.Solution('h2_burke2012.cti')
     i = 20
     nums = sens.duplicate_reactions(gas, i)
@@ -52,7 +54,8 @@ def test_plot_rates():
 
     fig2 = plt.figure()
     ax2 = fig2.add_subplot(111,xlabel='1000/T', ylabel='Unperturbed / True unperturbed')
-    ax2.plot([1000/x for x in T_plot], [x / y for x, y in zip(unp_rate, true_rate)], ls='-', marker='')
+    ax2.plot([1000/x for x in T_plot],
+             [x / y for x, y in zip(unp_rate, true_rate)], ls='-', marker='')
     fig2.show()
 
 
@@ -179,10 +182,9 @@ def compare_perturbation_shapes():
             gas = sens.perturb_reaction(gas, T, width, mag, nums)
             for Temp in T_plot:
                 gas.TP = (Temp, 101325)
-                rates = gas.forward_rate_constants
-                rate.append(rates[i_pert])
+                rate.append(gas.forward_rate_constants[i_pert])
             gas.TP = (T, 101325)
-            norm = gas.forward_rate_constants[i]
+            norm = sum([gas.forward_rate_constants[j] for j in nums])
             ax.plot([x - T for x in T_plot], [k/norm for k in rate], ls='-',
                     marker='', label='k_pert / k($T_c) at T_c$ = {}'.format(T))
 
@@ -201,8 +203,9 @@ def compare_perturbation_shapes():
 
 
 if __name__ == '__main__':
+    "Uncomment the lines below as needed."
     # test_plot_rates()
     # test_sensitivity()
     # compare_perturbation_shapes()
     # Zhao_fig_five()
-    Zhao_fig_four()
+    # Zhao_fig_four()

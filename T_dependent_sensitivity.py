@@ -7,13 +7,13 @@ Python/cantera version of ideas presented in:
     http://dx.doi.org/10.1002/kin.20080
 """
 
-import cantera
-import numpy as np
 import os
 import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
 from functools import partial
+import numpy as np
 from tqdm import tqdm
+import cantera
 
 
 # Global Variables
@@ -70,13 +70,13 @@ def add_perturbed_rxn(gas, rxn_num):
         Solution object with the extra reaction
     """
     rxn = gas.reaction(rxn_num)
-    if type(rxn) is not cantera._cantera.ElementaryReaction:
+    if not isinstance(rxn, cantera._cantera.ElementaryReaction):
         print('WARNING: {} is a {}. This code has only been tested on '
               'cantera._cantera.ElementaryReaction. '.format(rxn.equation, type(rxn)))
-    if type(rxn) is cantera._cantera.ThreeBodyReaction:
+    if isinstance(rxn, cantera._cantera.ThreeBodyReaction):
         print('WARNING: {} has third-body efficiencies. This code may give '
               'behave strangely with third-body reactions'.format(rxn.equation))
-    elif type(rxn) is cantera._cantera.FalloffReaction:
+    elif isinstance(rxn, cantera._cantera.FalloffReaction):
         raise TypeError('{} is a FalloffReaction. '
                         'This is not supported.'.format(rxn.equation))
     rxn.duplicate = True
@@ -123,9 +123,6 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
     Tmax = (T + 2 * width + np.sqrt((T + 2 * width)**2 - 4 * width * T))/2
     Tmin = Tmax - 2 * width
 
-    # Tmax = (T + width + np.sqrt((T + width)**2 - 2 * width * T))/2
-    # Tmin = Tmax - width
-
     magnitude = 0
     for num in rxn_num:
         magnitude += gas.reaction(num).rate(T) * mag_factor
@@ -138,20 +135,58 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
     return gas
 
 
-def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
-                mult_soret=False, resolution=100, width=75, mag=0.05,
-                workingdir=WORKINGDIR, parallel=True, timeout=10):
+def sensitivity(mixture, T, P, chemfile, rxn_num, loglevel=0, resolution=100,
+                width=75, mag=0.05, parallel=True, timeout=10, **kwargs):
+    """
+    Find the temperature-window sensitivity
+
+    Parameters
+    ----------
+    mixture : dict
+        Mixture dictionary. {'component1': quantity, 'component2': quantity2...}.
+    T : float
+        Unburned temperature, Kelvin.
+    P : float
+        Pressure, atm.
+    chemfile : str
+        Path to the chemistry file.
+    rxn_num : int
+        0-based index of the reaction of interest.
+    loglevel : int, optional
+        Controls the amount of detail printed to the screen. Higher values
+        print more information. The default is 0.
+    resolution : int, optional
+        Number of temperatures at which to perform the perturbation.
+        The default is 100.
+    width : float, optional
+        Width of the perturbation (Kelvin). The default is 75.
+    mag : float, optional
+        Magnitude of the perturbation. The default is 0.05.
+    parallel : bool, optional
+        Turn on parallel processing. The default is True.
+    timeout : float, optional
+        Maximum time for each flame simulation, in seconds. The default is 10.
+    **kwargs : optional keyword arguments
+        These arguments are passed to flame_speed.
+
+    Returns
+    -------
+    sens_array : array
+        Array with two columns - Temperature (K) and Sensitivity (K^-1)
+    window : tuple
+        Output from window_stats: (Tu, TL, T_max, TH, T_ad)
+
+    """
     log('*******\nParallel: {}\n'
         'Width = {}, magnitude = {}\n'
         '{:.0f} K, {:.1f} atm\n'
         'Modifying reaction {}\n'
-        'T-resolution: {}\n'
-        '{} minimum grid points'.format(parallel, width, mag, T, P, rxn_num,
-                                        resolution, mingrid), loglevel)
+        'T-resolution: {}'.format(parallel, width, mag, T, P, rxn_num,
+                                        resolution), loglevel)
+    log(kwargs, loglevel)
 
-    flame_run_opts = {'mixture': mixture, 'Tin': T, 'P': P,
-                      'workingdir': workingdir, 'mingrid': mingrid,
-                      'loglevel': loglevel-1, 'mult_soret': mult_soret}
+    flame_run_opts = {**kwargs, 'mixture': mixture, 'Tin': T, 'P': P,
+                      'loglevel': loglevel-1}
 
     # Calculate base case using model with blank Chebyshev rate, just in case.
     gas = cantera.Solution(chemfile)
@@ -189,7 +224,6 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, mingrid=200, loglevel=0,
                                      timeout=timeout)
             result.append(pool.apply_async(abortable_func, args=arg))
         pool.close()
-        # pool.join()  # This waits until all all processes have finished. It's commented so that the progress bar works.
 
         if loglevel < 2: # no other messages being printed
             speeds = []
@@ -247,37 +281,47 @@ def one_sensitivity(T_center, chemfile, rxn_num, width, mag, loglevel,
     return su
 
 
-def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
-                loglevel=0, restart=None, mult_soret=False):
+def flame_speed(gas, mixture, Tin, P, workingdir=WORKINGDIR, name=None,
+                mingrid=200, loglevel=0, restart=None, mult_soret=False):
     """
-
+    Simulate a flame
 
     Parameters
     ----------
+    gas : cantera.Solution
+        cantera.Solution object containing the chemistry information
     mixture : dict
-        DESCRIPTION.
+        Mixture dictionary. {'component1': quantity, 'component2': quantity2...}.
+    Tin : float
+        Inlet temperature, K.
     P : float
-        Pressure in atm.
-    Tin : TYPE
-        DESCRIPTION.
-    gas : TYPE
-        DESCRIPTION.
-    workingdir : TYPE
-        DESCRIPTION.
-    name : TYPE, optional
-        DESCRIPTION. The default is None.
-    mingrid : TYPE, optional
-        DESCRIPTION. The default is 200.
-    loglevel : TYPE, optional
+        Pressure, atm.
+    workingdir : str, optional
+        Directory for simulations. The default is WORKINGDIR.
+    name : str, optional
+        If given, save an xml file with this name. The default is None.
+    mingrid : int, optional
+        Minimum number of grid points. The default is 200.
+    loglevel : int, optional
+        Controls the amount of detail printed to the screen. Higher values
+        print more information. The default is 0.
+    restart : str or tuple, optional
+        string: Name of a simulation to restart from. The default is None.
+        tuple: (cantera solution array, refine criteria) to restart from
+        In my testing with stoichimetric hydrogen/air, restarting made the
+        simulations slower. This might not be true for larger models, or
+        off-stoichiometric conditions.
+    mult_soret : bool, optional
+        Turn on multicomponent diffusivity and Soret effect.
+        The default is False.loglevel : int, optional
         DESCRIPTION. The default is 0.
-    restart : TYPE, optional
-        DESCRIPTION. The default is None.
-    mult_soret : TYPE, optional
-        DESCRIPTION. The default is False.
 
     Returns
     -------
-    None.
+    Su : float
+        Unburned flame speed, m/s.
+    Tad : float
+        Adiabatic flame temperature, Kelvin.
 
     """
     f = cantera.FreeFlame(gas)  # Create flame object
@@ -291,7 +335,7 @@ def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
         lower_log = loglevel - 1
 
     if restart is not None:
-        if type(restart) is str:
+        if isinstance(restart, str):
             log('Restoring from ' + restart, loglevel)
             f.restore(os.path.join(workingdir, restart+'.xml'),
                       loglevel=lower_log)
@@ -299,7 +343,7 @@ def flame_speed(gas, mixture, Tin, P, workingdir, name=None, mingrid=200,
         else:
             data, refine_criteria = restart
             log('Restoring from flame data NOT FROM FILE.', loglevel)
-            f.from_solution_array(data)  # I think this uses the restart data as the initial guess
+            f.from_solution_array(data)
             log('restored solution with {} grid points'.format(f.flame.n_points), loglevel)
 
     try:
@@ -371,37 +415,37 @@ def _grid_independence(flame, mingrid, loglevel=0):
                 flame.velocity[0]*100, grid), loglevel)
 
 def _refine(fl, mingrid):
-        """
-        Adjust refinement criteria to get to mingrid points.
+    """
+    Adjust refinement criteria to get to mingrid points.
 
-        Returns cantera.FreeFlame object
-        """
-        refine_criteria = fl.get_refine_criteria()
-        grid = fl.flame.n_points
+    Returns cantera.FreeFlame object
+    """
+    refine_criteria = fl.get_refine_criteria()
+    grid = fl.flame.n_points
 
-        # For example, if you want to double the number of grid
-        # points, divide grad and curv by two.
-        # If factor > 3, or grid is approaching max (1000),
-        # loosen criteria to remove points
-        factor = grid / mingrid
-        if 2 > factor > 0.7 and grid < 900:
-            factor = 0.7  # Do some refining
-        elif factor < 0.1:
-            factor = 0.1  # Don't refine too much all at once
+    # For example, if you want to double the number of grid
+    # points, divide grad and curv by two.
+    # If factor > 3, or grid is approaching max (1000),
+    # loosen criteria to remove points
+    factor = grid / mingrid
+    if 2 > factor > 0.7 and grid < 900:
+        factor = 0.7  # Do some refining
+    elif factor < 0.1:
+        factor = 0.1  # Don't refine too much all at once
 
-        # Refine the mesh criteria.
+    # Refine the mesh criteria.
+    for key in ['slope', 'curve', 'prune']:
+        refine_criteria[key] *= factor
+    if factor > 1:
+        refine_criteria['prune'] *= factor # Make sure pruning happens??
+    max_criteria = max([refine_criteria[key] for key in
+                        ['slope', 'curve', 'prune']])
+    if max_criteria > 1.0:
         for key in ['slope', 'curve', 'prune']:
-            refine_criteria[key] *= factor
-        if factor > 1:
-            refine_criteria['prune'] *= factor # Make sure pruning happens??
-        max_criteria = max([refine_criteria[key] for key in
-                            ['slope', 'curve', 'prune']])
-        if max_criteria > 1.0:
-            for key in ['slope', 'curve', 'prune']:
-                refine_criteria[key] *= 1 / max_criteria
+            refine_criteria[key] *= 1 / max_criteria
 
-        fl.set_refine_criteria(**refine_criteria)
-        return fl
+    fl.set_refine_criteria(**refine_criteria)
+    return fl
 
 def abortable_worker(func, *args, **kwargs):
     """ Allow parallel processing to timeout.
