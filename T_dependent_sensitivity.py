@@ -238,7 +238,11 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, loglevel=0, resolution=100,
     sens = [((x - su_base) / su_base) / (mag * width) for x in speeds if x is not None]
     T = [t for t, x in zip(temperatures, speeds) if x is not None]
     sens_array = np.array([T, sens]).T
-    return sens_array, window_stats(sens_array)
+    try:
+        stats = window_stats(sens_array)
+    except:
+        stats = (0, 0, 0, 0, 0)
+    return sens_array, stats
 
 
 def window_stats(sens):
