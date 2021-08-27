@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/382147794.svg)](https://zenodo.org/badge/latestdoi/382147794)
+
 # temperature-window-sensitivity
 Find the sensitivity of flame speed to reaction rates in narrow temperature windows.
 
