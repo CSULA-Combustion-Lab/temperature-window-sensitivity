@@ -264,8 +264,8 @@ def window_stats(sens):
     """
     Tu = sens[0, 0] - 100
     T_ad = sens[-1, 0]
-    Smax = sens.max(0)[1]
-    T_max = sens[sens.argmax(0)[1], 0]
+    Smax = abs(sens).max(0)[1]
+    T_max = sens[abs(sens).argmax(0)[1], 0]
     inds = np.where(np.abs(sens[:, 1]) > 0.1 * np.abs(Smax))
     TL = sens[inds[0][0], 0]
     TH = sens[inds[0][-1], 0]
