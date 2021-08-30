@@ -138,7 +138,7 @@ def perturb_reaction(gas, T, width, mag_factor, rxn_num):
 def sensitivity(mixture, T, P, chemfile, rxn_num, loglevel=0, resolution=100,
                 width=75, mag=0.05, parallel=True, timeout=10, **kwargs):
     """
-    Find the temperature-window sensitivity
+    Find the temperature-window sensitivity, apply a filter.
 
     Parameters
     ----------
@@ -237,7 +237,9 @@ def sensitivity(mixture, T, P, chemfile, rxn_num, loglevel=0, resolution=100,
 
     sens = [((x - su_base) / su_base) / (mag * width) for x in speeds if x is not None]
     T = [t for t, x in zip(temperatures, speeds) if x is not None]
-    sens_array = np.array([T, sens]).T
+    window = max(10, int(resolution / 5))
+    filtered_sens = hampel_filter(sens, window)
+    sens_array = np.array([T, filtered_sens]).T
     try:
         stats = window_stats(sens_array)
     except:
@@ -387,6 +389,27 @@ def log(msg, level):
     if level > 0:
         print(msg)
 
+
+def hampel_filter(input_series, window_size, n_sigmas=3):
+    """ Filter the sensitivity vs. time data to remove outliers.
+
+    Copied from https://towardsdatascience.com/outlier-detection-with-hampel-filter-85ddf523c73d
+    """
+    n = len(input_series)
+    new_series = input_series.copy()
+    k = 1.4826 # scale factor for Gaussian distribution
+
+    indices = []
+
+    # possibly use np.nanmedian
+    for i in range((window_size),(n - window_size)):
+        x0 = np.median(input_series[(i - window_size):(i + window_size)])
+        S0 = k * np.median(np.abs(input_series[(i - window_size):(i + window_size)] - x0))
+        if (np.abs(input_series[i] - x0) > n_sigmas * S0):
+            new_series[i] = x0
+            indices.append(i)
+
+    return new_series
 
 def _grid_independence(flame, mingrid, loglevel=0):
     """ Refine until flame is independent of the grid, and has at least
